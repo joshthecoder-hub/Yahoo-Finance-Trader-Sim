@@ -1,0 +1,206 @@
+"""
+Simple example of running a moving average crossover backtest.
+
+This example demonstrates:
+- Creating synthetic data for testing
+- Setting up a backtest with the MA crossover strategy
+- Running the backtest
+- Analyzing results
+"""
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.engine.backtest import BacktestEngine
+from src.strategies.moving_average import MovingAverageCrossover
+from src.analysis.metrics import PerformanceMetrics
+from src.analysis.visualize import BacktestVisualizer
+
+
+def generate_synthetic_data(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    initial_price: float = 100.0,
+    volatility: float = 0.02,
+    trend: float = 0.0005
+) -> pd.DataFrame:
+    """
+    Generate synthetic OHLCV data for testing.
+
+    Args:
+        symbol: Stock symbol
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        initial_price: Starting price
+        volatility: Daily volatility
+        trend: Daily trend (drift)
+
+    Returns:
+        DataFrame with OHLCV data
+    """
+    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+    # Generate random walk with drift
+    returns = np.random.normal(trend, volatility, len(dates))
+    prices = initial_price * (1 + returns).cumprod()
+
+    # Generate OHLC
+    data = []
+    for i, (date, close) in enumerate(zip(dates, prices)):
+        daily_range = close * volatility * np.random.uniform(0.5, 1.5)
+        high = close + abs(np.random.normal(0, daily_range / 2))
+        low = close - abs(np.random.normal(0, daily_range / 2))
+        open_price = low + (high - low) * np.random.random()
+
+        data.append({
+            'Date': date,
+            'Open': open_price,
+            'High': high,
+            'Low': low,
+            'Close': close,
+            'Volume': int(np.random.uniform(1000000, 5000000))
+        })
+
+    df = pd.DataFrame(data)
+    df.set_index('Date', inplace=True)
+
+    return df
+
+
+def main(symbol=None, start_date=None, end_date=None, fast_period=None, slow_period=None, initial_capital=None):
+    """Run a simple moving average backtest."""
+    # Get command line args if available
+    import sys
+    if '--symbol' in sys.argv:
+        import argparse
+        parser = argparse.ArgumentParser(description='Run moving average crossover backtest')
+        parser.add_argument('--symbol', type=str, default='SPY',
+                            help='Stock ticker symbol (default: SPY)')
+        parser.add_argument('--start-date', type=str, default='2020-01-01',
+                            help='Start date YYYY-MM-DD (default: 2020-01-01)')
+        parser.add_argument('--end-date', type=str, default='2023-12-31',
+                            help='End date YYYY-MM-DD (default: 2023-12-31)')
+        parser.add_argument('--fast-period', type=int, default=50,
+                            help='Fast MA period (default: 50)')
+        parser.add_argument('--slow-period', type=int, default=200,
+                            help='Slow MA period (default: 200)')
+        parser.add_argument('--capital', type=float, default=100000.0,
+                            help='Initial capital (default: 100000.0)')
+        args = parser.parse_args()
+
+        symbol = args.symbol
+        start_date = args.start_date
+        end_date = args.end_date
+        fast_period = args.fast_period
+        slow_period = args.slow_period
+        initial_capital = args.capital
+
+    # Use defaults if not provided
+    symbol = symbol or "SPY"
+    start_date = start_date or "2020-01-01"
+    end_date = end_date or "2023-12-31"
+    fast_period = fast_period or 50
+    slow_period = slow_period or 200
+    initial_capital = initial_capital or 100000.0
+
+    print("=" * 60)
+    print("Moving Average Crossover Backtest Example")
+    print("=" * 60)
+
+    # Generate synthetic data
+    print("\n1. Generating synthetic market data...")
+    data = generate_synthetic_data(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        initial_price=100.0,
+        volatility=0.015,
+        trend=0.0003  # Slight upward trend
+    )
+    print(f"   Generated {len(data)} days of data for {symbol}")
+
+    # Create backtest engine
+    print("\n2. Setting up backtest engine...")
+    engine = BacktestEngine(
+        initial_capital=initial_capital,
+        commission=0.001  # 0.1% commission
+    )
+
+    # Add data
+    engine.add_data(symbol, data)
+
+    # Create strategy
+    print(f"\n3. Creating moving average crossover strategy (fast={fast_period}, slow={slow_period})...")
+    strategy = MovingAverageCrossover(
+        symbols=[symbol],
+        fast_period=fast_period,
+        slow_period=slow_period,
+        allocation=0.9  # Use 90% of capital
+    )
+    engine.set_strategy(strategy)
+
+    # Run backtest
+    print("\n4. Running backtest...")
+    equity_curve = engine.run()
+    print(f"   Backtest complete! Processed {len(equity_curve)} trading days")
+
+    # Get results
+    print("\n5. Analyzing results...")
+    trades = engine.portfolio.get_trade_history()
+    metrics = PerformanceMetrics.calculate_all_metrics(
+        equity_curve=equity_curve,
+        trades=trades,
+        risk_free_rate=0.02
+    )
+
+    # Print results
+    print("\n" + "=" * 60)
+    print("PERFORMANCE SUMMARY")
+    print("=" * 60)
+    print(f"Initial Capital:     ${metrics['initial_capital']:,.2f}")
+    print(f"Final Value:         ${metrics['final_value']:,.2f}")
+    print(f"Total Return:        {metrics['total_return']*100:.2f}%")
+    print(f"Annualized Return:   {metrics['annualized_return']*100:.2f}%")
+    print(f"Sharpe Ratio:        {metrics['sharpe_ratio']:.2f}")
+    print(f"Volatility:          {metrics['volatility']*100:.2f}%")
+    print(f"Max Drawdown:        {metrics['max_drawdown_pct']*100:.2f}%")
+    print(f"Total Trades:        {metrics['total_trades']}")
+    print("=" * 60)
+
+    # Display equity curve
+    print("\n6. Generating visualizations...")
+    try:
+        import matplotlib.pyplot as plt
+
+        # Create results directory if it doesn't exist
+        results_dir = os.path.join(os.path.dirname(__file__), '..', 'results')
+        os.makedirs(results_dir, exist_ok=True)
+
+        # Create filename: ticker_strategy_timeperiod_results.png
+        strategy_name = strategy.name.lower().replace(' ', '_')
+        time_period = f"{start_date.replace('-', '')}_{end_date.replace('-', '')}"
+        filename = f"{symbol}_{strategy_name}_{time_period}_results.png"
+
+        # Create dashboard
+        fig = BacktestVisualizer.create_summary_dashboard(equity_curve, metrics)
+        output_path = os.path.join(results_dir, filename)
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f"   Saved {output_path}")
+
+        # Optionally show plot
+        # plt.show()
+
+    except ImportError:
+        print("   Matplotlib not available, skipping visualizations")
+
+    print("\nBacktest complete!")
+
+
+if __name__ == "__main__":
+    main()
