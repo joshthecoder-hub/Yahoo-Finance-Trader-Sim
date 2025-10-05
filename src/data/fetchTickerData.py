@@ -1,6 +1,7 @@
 """Yahoo Finance data fetcher using yfinance library."""
 import yfinance as yf
 import pandas as pd
+import argparse
 from datetime import datetime
 from typing import Optional
 
@@ -67,17 +68,24 @@ def fetch_ticker_data(
 
 
 if __name__ == "__main__":
-    # Example usage
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Fetch historical stock data from Yahoo Finance")
+    parser.add_argument("symbol", type=str, help="Stock ticker symbol (e.g., AAPL, MSFT)")
+    parser.add_argument("start_date", type=str, help="Start date in YYYY-MM-DD format")
+    parser.add_argument("end_date", type=str, help="End date in YYYY-MM-DD format")
+    parser.add_argument("--interval", type=str, default="1d", help="Data interval (1d, 1wk, 1mo)")
+
+    args = parser.parse_args()
+
     print("Testing Yahoo Finance data fetcher...")
     print("-" * 60)
 
-    # Fetch Apple data
     try:
         data = fetch_ticker_data(
-            symbol="AAPL",
-            start_date="2023-01-01",
-            end_date="2023-12-31",
-            interval="1d"
+            symbol=args.symbol,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            interval=args.interval
         )
 
         print("\nFirst 5 rows:")
