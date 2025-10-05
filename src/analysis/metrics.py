@@ -86,11 +86,13 @@ class PerformanceMetrics:
             return 0.0
 
         excess_returns = returns - (risk_free_rate / periods_per_year)
+        std_dev = excess_returns.std()
 
-        if excess_returns.std() == 0:
+        # Use threshold to handle floating-point precision issues
+        if np.isclose(std_dev, 0.0, atol=1e-10) or std_dev < 1e-10:
             return 0.0
 
-        return np.sqrt(periods_per_year) * (excess_returns.mean() / excess_returns.std())
+        return np.sqrt(periods_per_year) * (excess_returns.mean() / std_dev)
 
     @staticmethod
     def max_drawdown(equity_curve: pd.DataFrame) -> Dict[str, float]:
@@ -160,51 +162,126 @@ class PerformanceMetrics:
     @staticmethod
     def win_rate(trades: pd.DataFrame) -> float:
         """
-        Calculate win rate from trades.
+        Calculate win rate from trades by matching buy/sell pairs.
 
         Args:
-            trades: DataFrame with trade history
+            trades: DataFrame with trade history (must have 'side', 'symbol', 'price', 'quantity')
 
         Returns:
-            Win rate (0.0-1.0)
+            Win rate (0.0-1.0) - percentage of profitable round-trip trades
         """
         if len(trades) == 0:
             return 0.0
 
-        # Group by symbol to calculate P&L per trade
-        # This is simplified - assumes alternating buys/sells
-        sell_trades = trades[trades['side'] == 'sell']
+        # Match buy/sell pairs to calculate P&L per round-trip trade
+        symbols = trades['symbol'].unique()
+        winning_trades = 0
+        total_roundtrips = 0
 
-        if len(sell_trades) == 0:
+        for symbol in symbols:
+            symbol_trades = trades[trades['symbol'] == symbol].copy()
+            symbol_trades = symbol_trades.sort_index()  # Sort by timestamp
+
+            # Stack to track open positions (FIFO matching)
+            buy_stack = []
+
+            for idx, trade in symbol_trades.iterrows():
+                if trade['side'] == 'buy':
+                    # Add buy to stack
+                    buy_stack.append({
+                        'price': trade['price'],
+                        'quantity': trade['quantity']
+                    })
+                elif trade['side'] == 'sell':
+                    # Match sell with buys from stack
+                    remaining_sell_qty = trade['quantity']
+                    sell_price = trade['price']
+
+                    while remaining_sell_qty > 0 and len(buy_stack) > 0:
+                        buy = buy_stack[0]
+                        matched_qty = min(buy['quantity'], remaining_sell_qty)
+
+                        # Calculate P&L for this matched trade
+                        pnl = (sell_price - buy['price']) * matched_qty
+
+                        if pnl > 0:
+                            winning_trades += 1
+                        total_roundtrips += 1
+
+                        # Update quantities
+                        buy['quantity'] -= matched_qty
+                        remaining_sell_qty -= matched_qty
+
+                        if buy['quantity'] == 0:
+                            buy_stack.pop(0)
+
+        if total_roundtrips == 0:
             return 0.0
 
-        # This is a simplification - proper implementation would match buys to sells
-        wins = len(sell_trades[sell_trades['price'] > 0])  # Placeholder logic
-
-        return wins / len(sell_trades)
+        return winning_trades / total_roundtrips
 
     @staticmethod
     def profit_factor(trades: pd.DataFrame) -> float:
         """
-        Calculate profit factor (gross profit / gross loss).
+        Calculate profit factor (gross profit / gross loss) from matched buy/sell pairs.
 
         Args:
-            trades: DataFrame with trade history
+            trades: DataFrame with trade history (must have 'side', 'symbol', 'price', 'quantity')
 
         Returns:
-            Profit factor
+            Profit factor - ratio of gross profits to gross losses
         """
         if len(trades) == 0:
             return 0.0
 
-        # Simplified - would need matched buy/sell pairs
-        sell_trades = trades[trades['side'] == 'sell']
+        # Match buy/sell pairs to calculate P&L
+        symbols = trades['symbol'].unique()
+        gross_profit = 0.0
+        gross_loss = 0.0
 
-        if len(sell_trades) == 0:
-            return 0.0
+        for symbol in symbols:
+            symbol_trades = trades[trades['symbol'] == symbol].copy()
+            symbol_trades = symbol_trades.sort_index()  # Sort by timestamp
 
-        # Placeholder - would calculate actual profits/losses
-        return 1.0
+            # Stack to track open positions (FIFO matching)
+            buy_stack = []
+
+            for idx, trade in symbol_trades.iterrows():
+                if trade['side'] == 'buy':
+                    # Add buy to stack
+                    buy_stack.append({
+                        'price': trade['price'],
+                        'quantity': trade['quantity']
+                    })
+                elif trade['side'] == 'sell':
+                    # Match sell with buys from stack
+                    remaining_sell_qty = trade['quantity']
+                    sell_price = trade['price']
+
+                    while remaining_sell_qty > 0 and len(buy_stack) > 0:
+                        buy = buy_stack[0]
+                        matched_qty = min(buy['quantity'], remaining_sell_qty)
+
+                        # Calculate P&L for this matched trade
+                        pnl = (sell_price - buy['price']) * matched_qty
+
+                        if pnl > 0:
+                            gross_profit += pnl
+                        else:
+                            gross_loss += abs(pnl)
+
+                        # Update quantities
+                        buy['quantity'] -= matched_qty
+                        remaining_sell_qty -= matched_qty
+
+                        if buy['quantity'] == 0:
+                            buy_stack.pop(0)
+
+        if gross_loss == 0:
+            # All trades profitable or no trades
+            return gross_profit if gross_profit > 0 else 0.0
+
+        return gross_profit / gross_loss
 
     @staticmethod
     def calculate_all_metrics(

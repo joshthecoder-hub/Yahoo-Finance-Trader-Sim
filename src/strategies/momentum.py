@@ -29,10 +29,20 @@ class RSIMomentum(Strategy):
         Args:
             symbols: List of symbols to trade
             period: RSI calculation period
-            oversold: Oversold threshold (buy signal)
-            overbought: Overbought threshold (sell signal)
+            oversold: Oversold threshold (buy signal, 0-100)
+            overbought: Overbought threshold (sell signal, 0-100)
             allocation: Portfolio allocation per position
         """
+        # Validate RSI thresholds
+        if not (0 <= oversold <= 100):
+            raise ValueError(f"Oversold threshold must be between 0 and 100, got {oversold}")
+        if not (0 <= overbought <= 100):
+            raise ValueError(f"Overbought threshold must be between 0 and 100, got {overbought}")
+        if oversold >= overbought:
+            raise ValueError(f"Oversold ({oversold}) must be less than overbought ({overbought})")
+        if period < 1:
+            raise ValueError(f"Period must be >= 1, got {period}")
+
         super().__init__("RSI Momentum")
         self.symbols = symbols
         self.period = period

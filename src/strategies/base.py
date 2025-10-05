@@ -71,6 +71,10 @@ class Strategy(ABC):
         if price <= 0:
             return 0
 
+        # Validate allocation is within acceptable range
+        if allocation < 0.0 or allocation > 1.0:
+            raise ValueError(f"Allocation must be between 0.0 and 1.0, got {allocation}")
+
         dollar_amount = portfolio_value * allocation
         shares = int(dollar_amount / price)
 

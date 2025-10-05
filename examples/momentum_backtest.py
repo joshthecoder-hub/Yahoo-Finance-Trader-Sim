@@ -2,6 +2,7 @@
 Example backtest using RSI momentum strategy.
 
 This demonstrates:
+- Fetching real market data from Yahoo Finance
 - Using the RSI momentum strategy
 - Comparing multiple strategies
 - More detailed analysis
@@ -18,53 +19,7 @@ from src.engine.backtest import BacktestEngine
 from src.strategies.momentum import RSIMomentum, RateOfChangeMomentum
 from src.analysis.metrics import PerformanceMetrics
 from src.analysis.visualize import BacktestVisualizer
-
-
-def generate_trending_data(
-    symbol: str,
-    start_date: str,
-    end_date: str,
-    initial_price: float = 100.0,
-    volatility: float = 0.02,
-    trend: float = 0.001,
-    add_cycles: bool = True
-) -> pd.DataFrame:
-    """Generate synthetic data with trend and optional cycles."""
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # Base random walk
-    returns = np.random.normal(trend, volatility, len(dates))
-
-    # Add cyclical component if requested
-    if add_cycles:
-        cycle_period = 60  # 60-day cycle
-        cycle_amplitude = volatility * 2
-        cycle = cycle_amplitude * np.sin(2 * np.pi * np.arange(len(dates)) / cycle_period)
-        returns += cycle
-
-    prices = initial_price * (1 + returns).cumprod()
-
-    # Generate OHLC
-    data = []
-    for date, close in zip(dates, prices):
-        daily_range = close * volatility * np.random.uniform(0.5, 1.5)
-        high = close + abs(np.random.normal(0, daily_range / 2))
-        low = close - abs(np.random.normal(0, daily_range / 2))
-        open_price = low + (high - low) * np.random.random()
-
-        data.append({
-            'Date': date,
-            'Open': open_price,
-            'High': high,
-            'Low': low,
-            'Close': close,
-            'Volume': int(np.random.uniform(1000000, 5000000))
-        })
-
-    df = pd.DataFrame(data)
-    df.set_index('Date', inplace=True)
-
-    return df
+from src.data.fetchTickerData import fetch_ticker_data
 
 
 def run_rsi_backtest():
@@ -73,19 +28,32 @@ def run_rsi_backtest():
     print("RSI Momentum Strategy Backtest")
     print("=" * 60)
 
-    # Generate data with cycles (good for RSI)
-    symbol = "CYCLICAL"
+    # Fetch real data from Yahoo Finance
+    symbol = "AAPL"  # Apple stock - good for RSI due to volatility
     start_date = "2020-01-01"
     end_date = "2023-12-31"
-    data = generate_trending_data(
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        initial_price=100.0,
-        volatility=0.02,
-        trend=0.0005,
-        add_cycles=True
-    )
+
+    print(f"\nFetching market data from Yahoo Finance for {symbol}...")
+    try:
+        data = fetch_ticker_data(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval="1d"
+        )
+    except ValueError as e:
+        print(f"Error: {e}")
+        return None, None, None, None, None, None
+
+    # Validate sufficient data for RSI strategy
+    rsi_period = 14
+    days_fetched = len(data)
+    min_required = rsi_period + 30  # RSI period + buffer for signal generation
+
+    if days_fetched < min_required:
+        print(f"   ⚠️  WARNING: Limited data ({days_fetched} days)")
+        print(f"   Recommended minimum: {min_required} days (RSI period + buffer)")
+        print(f"   Continuing, but expect limited signals...\n")
 
     # Create engine
     engine = BacktestEngine(initial_capital=100000.0, commission=0.001)
@@ -94,7 +62,7 @@ def run_rsi_backtest():
     # Create RSI strategy
     strategy = RSIMomentum(
         symbols=[symbol],
-        period=14,
+        period=rsi_period,
         oversold=30,
         overbought=70,
         allocation=0.8
@@ -126,19 +94,32 @@ def run_roc_backtest():
     print("Rate of Change Momentum Strategy Backtest")
     print("=" * 60)
 
-    # Generate trending data
-    symbol = "TRENDING"
+    # Fetch real data from Yahoo Finance
+    symbol = "MSFT"  # Microsoft stock - good for momentum strategies
     start_date = "2020-01-01"
     end_date = "2023-12-31"
-    data = generate_trending_data(
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        initial_price=100.0,
-        volatility=0.018,
-        trend=0.0008,
-        add_cycles=False
-    )
+
+    print(f"\nFetching market data from Yahoo Finance for {symbol}...")
+    try:
+        data = fetch_ticker_data(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval="1d"
+        )
+    except ValueError as e:
+        print(f"Error: {e}")
+        return None, None, None, None, None, None
+
+    # Validate sufficient data for ROC strategy
+    roc_period = 20
+    days_fetched = len(data)
+    min_required = roc_period + 30  # ROC period + buffer for signal generation
+
+    if days_fetched < min_required:
+        print(f"   ⚠️  WARNING: Limited data ({days_fetched} days)")
+        print(f"   Recommended minimum: {min_required} days (ROC period + buffer)")
+        print(f"   Continuing, but expect limited signals...\n")
 
     # Create engine
     engine = BacktestEngine(initial_capital=100000.0, commission=0.001)
@@ -147,7 +128,7 @@ def run_roc_backtest():
     # Create ROC strategy
     strategy = RateOfChangeMomentum(
         symbols=[symbol],
-        period=20,
+        period=roc_period,
         buy_threshold=3.0,
         sell_threshold=-3.0,
         allocation=0.8
@@ -178,10 +159,21 @@ def main():
     print("=" * 60)
     print("Momentum Strategy Backtesting Examples")
     print("=" * 60)
+    print("\nThis script compares two momentum strategies:")
+    print("  1. RSI Momentum (AAPL, 2020-01-01 to 2023-12-31)")
+    print("  2. Rate of Change Momentum (MSFT, 2020-01-01 to 2023-12-31)")
+    print("\nNote: This script uses hardcoded defaults.")
+    print("To customize, edit the symbol/dates in run_rsi_backtest() and run_roc_backtest() functions")
+    print("or use the simple_ma_backtest.py for command-line customization.")
 
     # Run both strategies
     rsi_equity, rsi_metrics, rsi_symbol, rsi_strategy, rsi_start, rsi_end = run_rsi_backtest()
     roc_equity, roc_metrics, roc_symbol, roc_strategy, roc_start, roc_end = run_roc_backtest()
+
+    # Check if both backtests succeeded
+    if rsi_equity is None or roc_equity is None:
+        print("\nOne or more backtests failed. Exiting.")
+        return
 
     # Compare
     print("\n" + "=" * 60)

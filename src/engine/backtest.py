@@ -20,8 +20,13 @@ class BacktestEngine:
 
         Args:
             initial_capital: Starting capital for the portfolio
-            commission: Commission rate per trade
+            commission: Commission rate per trade (must be >= 0)
         """
+        if commission < 0:
+            raise ValueError(f"Commission rate must be >= 0, got {commission}")
+        if initial_capital <= 0:
+            raise ValueError(f"Initial capital must be > 0, got {initial_capital}")
+
         self.initial_capital = initial_capital
         self.commission = commission
         self.portfolio = Portfolio(initial_capital, commission)

@@ -2,7 +2,7 @@
 Simple example of running a moving average crossover backtest.
 
 This example demonstrates:
-- Creating synthetic data for testing
+- Fetching real market data from Yahoo Finance
 - Setting up a backtest with the MA crossover strategy
 - Running the backtest
 - Analyzing results
@@ -20,57 +20,7 @@ from src.engine.backtest import BacktestEngine
 from src.strategies.moving_average import MovingAverageCrossover
 from src.analysis.metrics import PerformanceMetrics
 from src.analysis.visualize import BacktestVisualizer
-
-
-def generate_synthetic_data(
-    symbol: str,
-    start_date: str,
-    end_date: str,
-    initial_price: float = 100.0,
-    volatility: float = 0.02,
-    trend: float = 0.0005
-) -> pd.DataFrame:
-    """
-    Generate synthetic OHLCV data for testing.
-
-    Args:
-        symbol: Stock symbol
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-        initial_price: Starting price
-        volatility: Daily volatility
-        trend: Daily trend (drift)
-
-    Returns:
-        DataFrame with OHLCV data
-    """
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # Generate random walk with drift
-    returns = np.random.normal(trend, volatility, len(dates))
-    prices = initial_price * (1 + returns).cumprod()
-
-    # Generate OHLC
-    data = []
-    for i, (date, close) in enumerate(zip(dates, prices)):
-        daily_range = close * volatility * np.random.uniform(0.5, 1.5)
-        high = close + abs(np.random.normal(0, daily_range / 2))
-        low = close - abs(np.random.normal(0, daily_range / 2))
-        open_price = low + (high - low) * np.random.random()
-
-        data.append({
-            'Date': date,
-            'Open': open_price,
-            'High': high,
-            'Low': low,
-            'Close': close,
-            'Volume': int(np.random.uniform(1000000, 5000000))
-        })
-
-    df = pd.DataFrame(data)
-    df.set_index('Date', inplace=True)
-
-    return df
+from src.data.fetchTickerData import fetch_ticker_data
 
 
 def main(symbol=None, start_date=None, end_date=None, fast_period=None, slow_period=None, initial_capital=None):
@@ -112,18 +62,44 @@ def main(symbol=None, start_date=None, end_date=None, fast_period=None, slow_per
     print("=" * 60)
     print("Moving Average Crossover Backtest Example")
     print("=" * 60)
+    print("\nUsing defaults:")
+    print(f"  Symbol:         {symbol}")
+    print(f"  Date Range:     {start_date} to {end_date}")
+    print(f"  Fast MA:        {fast_period} days")
+    print(f"  Slow MA:        {slow_period} days")
+    print(f"  Initial Capital: ${initial_capital:,.0f}")
+    print("\nTo use different values, run:")
+    print("  python examples/simple_ma_backtest.py --symbol AAPL --start-date 2023-01-01 --end-date 2023-12-31")
+    print("  python examples/simple_ma_backtest.py --fast-period 20 --slow-period 50 --capital 50000")
+    print("  python examples/simple_ma_backtest.py --help  (for all options)")
 
-    # Generate synthetic data
-    print("\n1. Generating synthetic market data...")
-    data = generate_synthetic_data(
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        initial_price=100.0,
-        volatility=0.015,
-        trend=0.0003  # Slight upward trend
-    )
-    print(f"   Generated {len(data)} days of data for {symbol}")
+    # Fetch real data from Yahoo Finance
+    print(f"\n1. Fetching market data from Yahoo Finance for {symbol}...")
+    try:
+        data = fetch_ticker_data(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval="1d"
+        )
+    except ValueError as e:
+        print(f"   Error: {e}")
+        print("   Please check the ticker symbol and date range.")
+        return
+
+    # Validate sufficient data for strategy
+    days_fetched = len(data)
+    min_required = slow_period + 50  # Need slow_period + buffer for meaningful crossovers
+
+    if days_fetched <= min_required:
+        print(f"\n   ⚠️  WARNING: Insufficient data for strategy!")
+        print(f"   Data fetched: {days_fetched} days")
+        print(f"   Minimum recommended: {min_required} days ({slow_period}-day MA + 50 day buffer)")
+        print(f"   First valid {slow_period}-day MA: ~day {slow_period} of backtest")
+        print(f"\n   Recommendations:")
+        print(f"   • Extend date range: --start-date 2021-01-01 (or earlier)")
+        print(f"   • Use shorter periods: --fast-period 20 --slow-period 50")
+        print(f"\n   Continuing anyway, but expect limited/no trading signals...\n")
 
     # Create backtest engine
     print("\n2. Setting up backtest engine...")

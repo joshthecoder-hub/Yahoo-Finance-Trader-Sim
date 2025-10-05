@@ -58,11 +58,11 @@ class MovingAverageCrossover(Strategy):
             if symbol not in data or len(data[symbol]) < self.slow_period:
                 continue
 
-            df = data[symbol]
+            df = data[symbol].copy()
 
             # Calculate moving averages
-            df['SMA_Fast'] = df['Close'].rolling(window=self.fast_period).mean()
-            df['SMA_Slow'] = df['Close'].rolling(window=self.slow_period).mean()
+            df.loc[:, 'SMA_Fast'] = df['Close'].rolling(window=self.fast_period).mean()
+            df.loc[:, 'SMA_Slow'] = df['Close'].rolling(window=self.slow_period).mean()
 
             # Get current and previous values
             if len(df) < 2:
@@ -154,11 +154,11 @@ class ExponentialMovingAverageCrossover(Strategy):
             if symbol not in data or len(data[symbol]) < self.slow_period:
                 continue
 
-            df = data[symbol]
+            df = data[symbol].copy()
 
             # Calculate exponential moving averages
-            df['EMA_Fast'] = df['Close'].ewm(span=self.fast_period, adjust=False).mean()
-            df['EMA_Slow'] = df['Close'].ewm(span=self.slow_period, adjust=False).mean()
+            df.loc[:, 'EMA_Fast'] = df['Close'].ewm(span=self.fast_period, adjust=False).mean()
+            df.loc[:, 'EMA_Slow'] = df['Close'].ewm(span=self.slow_period, adjust=False).mean()
 
             if len(df) < 2:
                 continue
