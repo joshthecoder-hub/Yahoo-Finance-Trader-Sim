@@ -57,7 +57,8 @@ class RSIMomentum(Strategy):
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
 
-        rs = gain / loss
+        # Prevent division by zero by adding small epsilon
+        rs = gain / (loss + 1e-10)
         rsi = 100 - (100 / (1 + rs))
 
         return rsi
